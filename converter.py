@@ -171,8 +171,8 @@ def _GenATP_Idle( self, cnt ):
         if p.protocol == "spi-do":   p.value = 0
         if p.protocol == "i2c-scl":  p.value = 1
         if p.protocol == "i2c-sda":  p.value = 1
-        if p.protocol == "smi-mdc":  p.value = 0
-        if p.protocol == "smi-mdio": p.value = 0
+        if p.protocol == "smi-mdc":  p.value = 1
+        if p.protocol == "smi-mdio": p.value = 1
     self.f.write("//Begin being at Idle !\n")
     for i in range(0,cnt):
         self.cGenATPbyValue()
@@ -447,7 +447,6 @@ def _Set_SMI_Reg_Addr( self, cmd ):
     for b in addr:
         self.cSet_SMI_MDC_MDIO( 0, b )
     self.f.write("//(SMI) Finish writing Reg Address\n")
-
 #----------------------------------------------------------------------------
 def _Set_SMI_Phy_Addr( self, cmd ):
     self.f.write("//(SMI) Begin writing PHY Address\n")
@@ -465,9 +464,10 @@ def _Set_SMI_RW_Data( self, cmd ):
     ack= 0 if cmd.Command == "read" else "L"
     self.f.write("//(SMI) Begin %s data\n" % rw)
     self.f.write("//(SMI) Data = %s \n" % cmd.Value )
-
+    value =  cmd.Value.replace("_","").zfill(16)
     if( len(value) > 16 ):
         print( "[Error] The PHY Address Length for SMI is larger than 5" )
+        print(value)
 
     for v in value:
         if rw == "read":
