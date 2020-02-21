@@ -183,7 +183,7 @@ def check_CMD( cmd ):
         print("[Error] Unrecognized protocol in cmd")
         result = False
     elif( type(cmd.Address) != str ):
-        print("[Error] The reg addr must be presnet in string format")
+        print("[Error] The reg addr must be present in string format")
         result = False
     elif( "0x" not in cmd.Address ):
         print("[Error] The reg addr must be present in hex, e.g., 0x...")
