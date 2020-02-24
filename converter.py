@@ -11,6 +11,7 @@ class Port:
         self.name     = name
         self.value    = value
         self.protocol = ""
+#---------------------------------------------------------------------
 class converter:
     def __init__( self ):
         self.args        = ''
@@ -44,8 +45,8 @@ class converter:
         _Set_I2C_Start( self )
     def cSet_I2C_End( self ):
         _Set_I2C_End( self )
-    def cSet_I2C_Ctrl_Byte( self, ctrl ):
-        _Set_I2C_Ctrl_Byte( self, ctrl )
+    def cSet_I2C_Ctrl_Byte( self, ctrl, rw ):
+        _Set_I2C_Ctrl_Byte( self, ctrl, rw )
     def cSet_I2C_Reg_Addr( self, cmd ):
         _Set_I2C_Reg_Addr( self, cmd )
     def cSet_I2C_RW_Data( self, cmd ):
@@ -73,6 +74,7 @@ class converter:
     #----Basic--------------------------------------
     def cGenATPbyValue( self ):
         _GenATPbyValue( self  )
+#----------------------------------------------------------------------------
 #----------------------------------------------------------------------------
 def _ParseArgs( self ):
     print( t.asctime( t.localtime( t.time() ) ) )
@@ -166,7 +168,7 @@ def _GenATP_Idle( self, cnt ):
         if p.protocol == "tie0":     p.value = 0
         if p.protocol == "tiex":     p.value = "x"
         if p.protocol == "spi-ss":   p.value = 1
-        if p.protocol == "spi-clk":  p.value = 0
+        if p.protocol == "spi-clk":  p.value = 1
         if p.protocol == "spi-di":   p.value = 0
         if p.protocol == "spi-do":   p.value = 0
         if p.protocol == "i2c-scl":  p.value = 1
@@ -268,7 +270,6 @@ def _Set_SPI_Format( self, cmd ):
         self.cGenATP_Idle(10)
         #------OP-Write-----------------------
         self.f.write("//(SPI) Start! SPI_CSI 1 -> 0 \n")
-        self.cSet_SPI_SS_CLK_DI_DO( 0, 0, 0, 0 )
         self.f.write("//(SPI) Start writing OP code\n")
         self.cSet_SPI_SS_CLK_DI_DO( 0, 0, 0, 0 )
         self.cSet_SPI_SS_CLK_DI_DO( 0, 0, 0, 0 )
@@ -296,11 +297,12 @@ def _Set_I2C_SCL_SDA( self, SCL, SDA ):
             p.value = SDA
     self.cGenATPbyValue()
 #----------------------------------------------------------------------------
-def _Set_I2C_Ctrl_Byte( self, ctrl_byte ):
+def _Set_I2C_Ctrl_Byte( self, ctrl_byte, rw ):
     self.f.write("//(I2C) Begin writing ctrl bytes\n")
+    rwb = 0 if (rw == "w") else 1
     for ctrl in ctrl_byte:
         self.cSet_I2C_SCL_SDA( 0, ctrl )
-    self.cSet_I2C_SCL_SDA( 0, 0   ) #R/W, Write
+    self.cSet_I2C_SCL_SDA( 0, rwb   ) #R/W, Write
     self.cSet_I2C_SCL_SDA( 0, "L" )#--ACK from DUT
     self.f.write("//(I2C) End writing ctrl bytes\n")
 #----------------------------------------------------------------------------
@@ -370,7 +372,7 @@ def _Set_I2C_Format( self, cmd ):
         #--Start------------------
         self.cSet_I2C_Start()
         #--Ctrl byte-------------- 
-        self.cSet_I2C_Ctrl_Byte( ctrl )
+        self.cSet_I2C_Ctrl_Byte( ctrl, "w" )
         #--Write Reg Addr---------
         self.cSet_I2C_Reg_Addr( cmd )
         if cmd.Command == "read":
@@ -378,7 +380,7 @@ def _Set_I2C_Format( self, cmd ):
             self.cSet_I2C_SCL_SDA( 0, 1 )
             self.cSet_I2C_SCL_SDA( 1, 0 )
             #--Ctrl byte-------------- 
-            self.cSet_I2C_Ctrl_Byte( ctrl )
+            self.cSet_I2C_Ctrl_Byte( ctrl, "r" )
         #--RW Data-------------
         self.cSet_I2C_RW_Data( cmd )
         #--End---------------------
