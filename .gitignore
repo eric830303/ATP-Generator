@@ -342,3 +342,4 @@ healthchecksdb
 *.sln
 *.xlsx
 *.pyproj
+*ipynb*

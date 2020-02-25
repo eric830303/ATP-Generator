@@ -11,6 +11,7 @@ class Port:
         self.name     = name
         self.value    = value
         self.protocol = ""
+        self.ini_value= value
 #---------------------------------------------------------------------
 class converter:
     def __init__( self ):
@@ -134,20 +135,20 @@ def _ParseDataFrame( self ):
         print( "[Error] Fail to read excel" )
         print( "[Error] Input file must be *.xlsx format. Maybe your input is *.csv or other formates, which is not allowed" )
     #----------Parse Port Data---------------------------------------------
-    self.cPutPortInVector( self.df_port[ "Tie-1 Port" ]  ,"tie1"  ,1   )
-    self.cPutPortInVector( self.df_port[ "Tie-0 Port" ]  ,"tie0"  ,0   )
+    self.cPutPortInVector( self.df_port[ "Tie-1 Port" ]  ,"tie1"  , 1  )
+    self.cPutPortInVector( self.df_port[ "Tie-0 Port" ]  ,"tie0"  , 0  )
     self.cPutPortInVector( self.df_port[ "Tie-X Port" ]  ,"tiex"  ,'x' )
     if ( self.args.ifi2c ):
         self.cPutPortInVector( self.df_port[ "I2C-SCL" ] ,"i2c-scl", 1 )
         self.cPutPortInVector( self.df_port[ "I2C-SDA" ] ,"i2c-sda", 1 )
     elif ( self.args.ifspi ):
         self.cPutPortInVector( self.df_port[ "SPI-SS"  ] ,"spi-ss" , 1 )
-        self.cPutPortInVector( self.df_port[ "SPI-CLK" ] ,"spi-clk", 0 )
-        self.cPutPortInVector( self.df_port[ "SPI-DI"  ] ,"spi-di" , 1 )
+        self.cPutPortInVector( self.df_port[ "SPI-CLK" ] ,"spi-clk", 1 )
+        self.cPutPortInVector( self.df_port[ "SPI-DI"  ] ,"spi-di" , 0 )
         self.cPutPortInVector( self.df_port[ "SPI-DO"  ] ,"spi-do" , 0 )
     elif (self.args.ifsmi ):
-        self.cPutPortInVector( self.df_port[ "SMI-MDC" ] ,"smi-mdc"  , 0 )
-        self.cPutPortInVector( self.df_port[ "SMI-MDIO"] ,"smi-mdio" , 0 )
+        self.cPutPortInVector( self.df_port[ "SMI-MDC" ] ,"smi-mdc"  , 1 )
+        self.cPutPortInVector( self.df_port[ "SMI-MDIO"] ,"smi-mdio" , 1 )
     #----------Parse Port Data---------------------------------------------
     print( "[Info] The result parsed from xlsx is concluded below" )
     for p in self.vector:
@@ -164,17 +165,8 @@ def _GenVectorList( self ):
 def _GenATP_Idle( self, cnt ):
     #Reset
     for p in self.vector:
-        if p.protocol == "tie1":     p.value = 1
-        if p.protocol == "tie0":     p.value = 0
-        if p.protocol == "tiex":     p.value = "x"
-        if p.protocol == "spi-ss":   p.value = 1
-        if p.protocol == "spi-clk":  p.value = 1
-        if p.protocol == "spi-di":   p.value = 0
-        if p.protocol == "spi-do":   p.value = 0
-        if p.protocol == "i2c-scl":  p.value = 1
-        if p.protocol == "i2c-sda":  p.value = 1
-        if p.protocol == "smi-mdc":  p.value = 1
-        if p.protocol == "smi-mdio": p.value = 1
+        p.value = p.ini_value
+        
     self.f.write("//Begin being at Idle !\n")
     for i in range(0,cnt):
         self.cGenATPbyValue()
