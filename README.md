@@ -19,33 +19,33 @@ $ python .\converter.py -h
 #### I2C
 Convert the Excel file based on I2C protocol
 ```sh
-$ python ./converter.py -i2c -input pattern_example.xlsx
+$ python .\converter.py -i2c -input pattern_example.xlsx
 ```
 Convert the Excel file based on I2C protocol, with the specified output filename.
 ```sh
-$ python ./converter.py -i2c -input pattern_example.xlsx -output output_i2c.atp
+$ python .\converter.py -i2c -input pattern_example.xlsx -output output_i2c.atp
 ```
 Convert the Excel file based on I2C protocol, with the specified output filename and the specified 5-bit control byte
 ```sh
-$ python ./converter.py -i2c -input pattern_example.xlsx -output output_i2c.atp -ctrlbyte 1010111
+$ python .\converter.py -i2c -input pattern_example.xlsx -output output_i2c.atp -ctrlbyte 1010111
 ```
 #### SPI
 Convert the Excel file based on SPI protocol
 ```sh
-$ python ./converter.py -spi -input pattern_example.xlsx
+$ python .\converter.py -spi -input pattern_example.xlsx
 ```
 Convert the Excel file based on SPI protocol, with the specified output filename.
 ```sh
-$ python ./converter.py -spi -input pattern_example.xlsx -output output_spi.atp
+$ python .\converter.py -spi -input pattern_example.xlsx -output output_spi.atp
 ```
 #### SMI (MDC/MDIO)
 Convert the Excel file based on SMI protocol
 ```sh
-$ python ./converter.py -smi -input pattern_example.xlsx
+$ python .\converter.py -smi -input pattern_example.xlsx
 ```
 Convert the Excel file based on SMI protocol, with the specified output filename.
 ```sh
-$ python ./converter.py -smi -input pattern_example.xlsx -output output_smi.atp
+$ python .\converter.py -smi -input pattern_example.xlsx -output output_smi.atp
 ```
 
 
