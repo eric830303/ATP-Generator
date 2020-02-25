@@ -278,6 +278,18 @@ def _Set_SPI_Format( self, cmd ):
             self.f.write("//(SPI) End writing OP code for Read 8'h02\n")
         #------Write 24 bits Address-----------
         self.cSet_SPI_Reg_Addr( cmd )
+        #------Dummy if Read-------------------
+        if cmd.Command == "read":
+            self.f.write("//(SPI) Begin Dummy\n")
+            self.cSet_SPI_SS_CLK_DI_DO( 0, 0, 0, 0 )
+            self.cSet_SPI_SS_CLK_DI_DO( 0, 0, 0, 0 )
+            self.cSet_SPI_SS_CLK_DI_DO( 0, 0, 0, 0 )
+            self.cSet_SPI_SS_CLK_DI_DO( 0, 0, 0, 0 )
+            self.cSet_SPI_SS_CLK_DI_DO( 0, 0, 0, 0 )
+            self.cSet_SPI_SS_CLK_DI_DO( 0, 0, 0, 0 )
+            self.cSet_SPI_SS_CLK_DI_DO( 0, 0, 0, 0 )
+            self.cSet_SPI_SS_CLK_DI_DO( 0, 0, 0, 0 )
+            self.f.write("//(SPI) End Dummy\n")
         #------RW Data-------------------------
         self.cSet_SPI_RW_Data( cmd )
 #----------------------------------------------------------------------------
@@ -316,7 +328,7 @@ def _Set_I2C_Reg_Addr( self, cmd ):
 #----------------------------------------------------------------------------
 def _Set_I2C_RW_Data( self, cmd ):
     rw = cmd.Command
-    ack= 0 if cmd.Command == "read" else "L"
+    ack= 1 if cmd.Command == "read" else "L"
     self.f.write("//(I2C) Begin %s data\n" % rw)
     self.f.write("//(I2C) Data = %s \n" % cmd.Value )
     value = cmd.Value.replace( "_", "" ).zfill(32)[::-1]
