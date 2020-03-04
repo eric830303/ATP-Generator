@@ -22,7 +22,8 @@ class converter:
         self.df_cmd      = ''
         self.vector      = []
         self.f           = ''
-
+        self.excel       = ''
+        self.cmd_list    = [ "W", "R", "R", "RH", "RL", "D", "F" ]
     #-----Parser-------------------------------------
     def cParseArgs( self ):
         _ParseArgs( self )
@@ -96,9 +97,9 @@ def _ParseArgs( self ):
     parser.add_argument( "-spi"                 ,help=help_spi       ,dest="ifspi"              ,default=False          ,action="store_true")
     parser.add_argument( "-i2c"                 ,help=help_i2c       ,dest="ifi2c"              ,default=False          ,action="store_true")
     parser.add_argument( "-smi"                 ,help=help_smi       ,dest="ifsmi"              ,default=False          ,action="store_true")
-    parser.add_argument( "-output"              ,help=help_out       ,dest="outfname"           ,default="output.atp")
-    parser.add_argument( "-ctrlbyte"            ,help=help_ctrl      ,dest="ctrlbyte"           ,default="1010100")
-    parser.add_argument( "-dummy"               ,help=help_dummy     ,dest="dumycycle"          ,default=8              ,type=int)
+    parser.add_argument( "-spi_ctrlbyte"        ,help=help_ctrl      ,dest="ctrlbyte"           ,default="1010100")
+    parser.add_argument( "-spi_dummy"           ,help=help_dummy     ,dest="dumycycle"          ,default=8              ,type=int)
+    parser.add_argument( "-smi_phy_adr"         ,help=help_dummy     ,dest="phy_adr"            ,default="0x18")
     self.args, self.unknown = parser.parse_known_args()
     #----------------Checker------------------------------------------
     if ( self.args.infname == "" ):
@@ -112,7 +113,6 @@ def _ParseArgs( self ):
         exit(-1)
     #-------------------------------------------------------------------
     print( "[Setting] Input     : %s"    % self.args.infname )
-    print( "[Setting] Output    : %s"    % self.args.outfname )
     print( "[Setting] I2C -> ATP:" , self.args.ifi2c)
     print( "[Setting] SPI -> ATP:" , self.args.ifspi )
     print( "[Setting] SMI -> ATP:" , self.args.ifsmi )
@@ -129,13 +129,23 @@ def _PutPortInVector( self, port_list, protocol, value ):
 #----------------------------------------------------------------------------
 def _ParseDataFrame( self ):
     try:
-        self.df_port = pd.read_excel( self.args.infname, header=0, sheet_name="PORT" )
-        self.df_cmd  = pd.read_excel( self.args.infname, header=0, sheet_name="CMD" )
+        self.excel   = pd.ExcelFile( self.args.infname )
         print( "[Info] Reading %s" % self.args.infname )
     except:
         print( "[Error] Fail to read excel" )
         print( "[Error] Input file must be *.xlsx format. Maybe your input is *.csv or other formates, which is not allowed" )
     #----------Parse Port Data---------------------------------------------
+    if(   "_start" not in self.excel.sheet_names ):
+        print( "[Error] No \"_start\" sheet in your excel" )
+        exit(-1)
+    elif( "_end"   not in self.excel.sheet_names ):
+        print( "[Error] No \"_end\" sheet in your excel" )
+        exit(-1)
+    elif( "PORT"   not in self.excel.sheet_names ):
+        print( "[Error] No \"PORT\" sheet in your excel" )
+        exit(-1)
+    self.df_port = self.excel.parse("PORT")
+
     self.cPutPortInVector( self.df_port[ "Tie-1 Port" ]  ,"tie1"  , 1  )
     self.cPutPortInVector( self.df_port[ "Tie-0 Port" ]  ,"tie0"  , 0  )
     self.cPutPortInVector( self.df_port[ "Tie-X Port" ]  ,"tiex"  ,'x' )
@@ -174,17 +184,14 @@ def _GenATP_Idle( self, cnt ):
 #----------------------------------------------------------------------------
 def check_CMD( cmd ):
     result = True
-    if  ( cmd.Protocol != "I2C" ) and ( cmd.Protocol != "SPI" ) and ( cmd.Protocol != "SMI" ):
-        print("[Error] Unrecognized protocol in cmd")
-        result = False
-    elif( type(cmd.Address) != str ):
+    if( type(cmd.REGISTER) != str ):
         print("[Error] The reg addr must be present in string format")
         result = False
-    elif( "0x" not in cmd.Address ):
-        print("[Error] The reg addr must be present in hex, e.g., 0x...")
+    elif( type(cmd.DATA) != str ):
+        print("[Error] The reg value must be present in string format")
         result = False
-    elif( type(cmd.Value) != str ):
-        print("[Error] The reg value must be presnet in string format")
+    elif( "0x" not in cmd.REGISTER ):
+        print("[Error] The reg addr must be present in hex, e.g., 0x...")
         result = False
     else:
         result = True
@@ -194,29 +201,52 @@ def check_CMD( cmd ):
     return result
 #----------------------------------------------------------------------------
 def _GenATP( self ):
-    self.f = open( self.args.outfname, "w" )
-    self.f.write( "import tset frcgen0;\n" )
-    self.f.write( "vector \t( $tset, %s ) \n" % self.cGenVectorList() )
-    self.f.write( "{\n" )
-    self.f.write( "burst_start_0:\n" )
-    self.cGenATP_Idle(10)
+    sheet_list = []
+    meet_start = False
+    for sheet in self.excel.sheet_names:
+        if  ( sheet == "_start" ):
+            meet_start = True
+            continue
+        elif( sheet == "_end"   ):
+            break
+        if( meet_start ):
+            sheet_list.append( sheet )
+
+    if( len(sheet_list) == 0 ):
+        print("[ERROR] No sheet is available. Maybe _start or _end sheet is placed in wrong order")
+        exit(-1)
+
+    for sheet_name in sheet_list:
+       self.f = open( sheet_name + ".atp" , "w" )
+       self.f.write( "import tset frcgen0;\n" )
+       self.f.write( "vector \t( $tset, %s ) \n" % self.cGenVectorList() )
+       self.f.write( "{\n" )
+       self.f.write( "burst_start_0:\n" )
+       self.cGenATP_Idle(10)
     #-----------Instruction from Excel---------------------------------------
-    row_cnt = self.df_cmd.shape[0]
-    for i in range( 0, row_cnt ):
-        cmd = self.df_cmd.iloc[i]
-        #Check cmd format in xlsx
-        if( not check_CMD( cmd ) ):
-            exit(-1)
+       self.df_cmd = self.excel.parse( sheet_name )
+       row_cnt = self.df_cmd.shape[0]
+       for i in range( 0, row_cnt ):
+           cmd = self.df_cmd.iloc[i]
+           
+           #Check cmd format in xlsx
+           cmd.DATA = str( cmd.DATA )
+           if( cmd.COMMAND == "D" ):
+               self.cGenATP_Idle( int( cmd.DATA ) )
+               continue
+           elif( not check_CMD( cmd ) ):
+               exit(-1)
 
-        if self.args.ifi2c: 
-            self.cSet_I2C_Format( cmd )
-        elif self.args.ifspi:
-            self.cSet_SPI_Format( cmd )
-        elif self.args.ifsmi:
-            self.cSet_SMI_Format( cmd )
 
-    self.f.write( "}\n" )
-    self.f.close()
+           if(   self.args.ifi2c ): 
+               self.cSet_I2C_Format( cmd )
+           elif( self.args.ifspi ):
+               self.cSet_SPI_Format( cmd )
+           elif( self.args.ifsmi ):
+               self.cSet_SMI_Format( cmd )
+
+       self.f.write( "}\n" )
+       self.f.close()
 #----------------------------------------------------------------------------
 def _Set_SPI_SS_CLK_DI_DO( self, a, b, c, d ):
     for p in self.vector:
@@ -231,22 +261,49 @@ def _Set_SPI_SS_CLK_DI_DO( self, a, b, c, d ):
     self.cGenATPbyValue()
 #----------------------------------------------------------------------------
 def _Set_SPI_Reg_Addr( self, cmd ):
+    #The address must be present in hex format
     self.f.write("//(SPI) Begin writing 24-bit Reg Address\n")
-    self.f.write("//(SPI) Address = %s \n" % cmd.Address )
-    adrr = bin(int(cmd.Address,16))[2:].zfill(24)[::-1]
+    self.f.write("//(SPI) Address = %s \n" % cmd.REGISTER )
+    adrr = bin(int(cmd.REGISTER,16))[2:].zfill(24)[::-1]
     adrr = adrr[16:24][::-1] + adrr[8:16][::-1] + adrr[0:8][::-1]
     for b in adrr:
         self.cSet_SPI_SS_CLK_DI_DO( 0, 0, b, 0 )       
     self.f.write("//(SPI) End writing 24-bit Reg Address\n")
 #----------------------------------------------------------------------------
+def isDataBinary( DATA ):
+    assert type( DATA ) == str, "DATA should be present in string format"
+    length = len( DATA.replace( "_", "" ) )
+    
+    if  ( DATA[0:2] != "0x" ) and ( DATA[0:2] != "0X"):
+        return True
+    elif( "_" in DATA ):
+        return True
+    elif( length == 16 ) or ( length == 32 ):
+        return True
+    else:
+        return False #Hex
+#----------------------------------------------------------------------------
 def _Set_SPI_RW_Data( self, cmd ):
-    rw = cmd.Command
+    rw = cmd.COMMAND
     self.f.write("//(SPI) Begin %s data\n" % rw)
-    self.f.write("//(SPI) Data = %s \n" % cmd.Value )
-    value = cmd.Value.replace( "_", "" ).zfill(32)[::-1]
+    self.f.write("//(SPI) Data = %s \n" % cmd.DATA )
+    value = 0
+    #Hex format (Must be 32 bit)
+    if not isDataBinary( cmd.DATA ):
+        if( "W" in cmd.COMMAND ):
+            value =  bin(int(cmd.DATA,16))[2:].zfill(32)[::-1]
+        else:
+            value =  bin(int(cmd.DATA,16))[2:].rjust(32,"x")[::-1]
+    #Binary format
+    else:
+        if( "W" in cmd.COMMAND ):
+            value = cmd.DATA.replace( "_", "" ).zfill(32)[::-1]
+        else:#R, RL, RH
+            value = cmd.DATA.replace( "_", "" ).rjust(32,"x")[::-1]
+       
     value = value[24:32][::-1] + value[16:24][::-1] + value[8:16][::-1] + value[0:8][::-1]
     for v in value:
-        if rw == "read":
+        if "R" in rw :
             if v == "1":
                 v = "H"
             elif v == "0":
@@ -257,7 +314,7 @@ def _Set_SPI_RW_Data( self, cmd ):
     self.f.write("//(SPI) End %s data\n" % rw)
 #----------------------------------------------------------------------------
 def _Set_SPI_Format( self, cmd ):
-    if (cmd.Protocol != "SPI") or (cmd.Command != "read" and cmd.Command != 'write') or (not self.args.ifspi):
+    if ( cmd.COMMAND not in self.cmd_list ) or (not self.args.ifspi):
         return
     else:
         self.cGenATP_Idle(10)
@@ -271,7 +328,7 @@ def _Set_SPI_Format( self, cmd ):
         self.cSet_SPI_SS_CLK_DI_DO( 0, 0, 0, 0 )
         self.cSet_SPI_SS_CLK_DI_DO( 0, 0, 0, 0 )
         self.cSet_SPI_SS_CLK_DI_DO( 0, 0, 1, 0 )
-        if cmd.Command == "read":
+        if ( cmd.COMMAND == "R" ) or ( cmd.COMMAND == "RH" ) or ( cmd.COMMAND == "RL" ) :
             self.cSet_SPI_SS_CLK_DI_DO( 0, 0, 1, 0 )
             self.f.write("//(SPI) End writing OP code for Read 8'h03\n")
         else:
@@ -280,7 +337,7 @@ def _Set_SPI_Format( self, cmd ):
         #------Write 24 bits Address-----------
         self.cSet_SPI_Reg_Addr( cmd )
         #------Dummy if Read-------------------
-        if cmd.Command == "read":
+        if ( cmd.COMMAND == "R" ) or ( cmd.COMMAND == "RH" ) or ( cmd.COMMAND == "RL" ) :
             self.f.write("//(SPI) Begin Dummy\n")
             for i in range( self.args.dumycycle ):
                 self.cSet_SPI_SS_CLK_DI_DO( 0, 0, 0, 0 )
@@ -307,8 +364,8 @@ def _Set_I2C_Ctrl_Byte( self, ctrl_byte, rw ):
 #----------------------------------------------------------------------------
 def _Set_I2C_Reg_Addr( self, cmd ):
     self.f.write("//(I2C) Begin writing 24-bit Reg Address\n")
-    self.f.write("//(I2C) Address = %s \n" % cmd.Address )
-    adrr = bin(int(cmd.Address,16))[2:].zfill(24)[::-1]
+    self.f.write("//(I2C) Address = %s \n" % cmd.REGISTER )
+    adrr = bin(int(cmd.REGISTER,16))[2:].zfill(24)[::-1]
     adrr = adrr[0:8][::-1] + adrr[8:16][::-1] + adrr[16:24][::-1]
     ctr  = 1
     for b in adrr:
@@ -322,16 +379,29 @@ def _Set_I2C_Reg_Addr( self, cmd ):
     self.f.write("//(I2C) End writing 24-bit Reg Address\n")
 #----------------------------------------------------------------------------
 def _Set_I2C_RW_Data( self, cmd ):
-    rw = cmd.Command
-    ack= 1 if cmd.Command == "read" else "L"
+    rw = cmd.COMMAND
+    ack= 1 if ( "R" in cmd.COMMAND ) else "L"
     self.f.write("//(I2C) Begin %s data\n" % rw)
-    self.f.write("//(I2C) Data = %s \n" % cmd.Value )
-    value = cmd.Value.replace( "_", "" ).zfill(32)[::-1]
+    self.f.write("//(I2C) Data = %s \n" % cmd.DATA )
+    value = 0
+    #Hex format (Must be 32 bit)
+    if not isDataBinary( cmd.DATA ):
+        if( "W" in cmd.COMMAND ):
+            value =  bin(int(cmd.DATA,16))[2:].zfill(32)[::-1]
+        else:
+            value =  bin(int(cmd.DATA,16))[2:].rjust(32,"x")[::-1]
+    #Binary format
+    else:
+        if( "W" in cmd.COMMAND ):
+            value = cmd.DATA.replace( "_", "" ).zfill(32)[::-1]
+        else:#R, RL, RH
+            value = cmd.DATA.replace( "_", "" ).rjust(32,"x")[::-1]
+
     value = value[0:8][::-1] + value[8:16][::-1] + value[16:24][::-1] + value[24:32][::-1]
     ctr   = 1
     byte  = 1
     for v in value:
-        if rw == "read":
+        if "R" in rw:
             if v == "1":
                 v = "H"
             elif v == "0":
@@ -350,8 +420,6 @@ def _Set_I2C_RW_Data( self, cmd ):
 def _Set_I2C_Start( self ):
     self.f.write("//I2C Start\n")
     self.cSet_I2C_SCL_SDA( 1, 1 )
-    self.cSet_I2C_SCL_SDA( 1, 1 )
-    self.cSet_I2C_SCL_SDA( 1, 1 )
     self.cSet_I2C_SCL_SDA( 1, 0 )
 #----------------------------------------------------------------------------
 def _Set_I2C_End( self ):
@@ -360,11 +428,9 @@ def _Set_I2C_End( self ):
     self.cSet_I2C_SCL_SDA( 1, 1 )
     self.cSet_I2C_SCL_SDA( 1, 1 )
     self.cSet_I2C_SCL_SDA( 1, 1 )
-    self.cSet_I2C_SCL_SDA( 1, 1 )
-    self.cSet_I2C_SCL_SDA( 1, 1 )
 #----------------------------------------------------------------------------
 def _Set_I2C_Format( self, cmd ):
-    if (cmd.Protocol != "I2C") or (cmd.Command != "read" and cmd.Command != "write") or (not self.args.ifi2c):
+    if ( cmd.COMMAND not in self.cmd_list ) or ( not self.args.ifi2c ):
         return
     else:
         ctrl = self.args.ctrlbyte #Ctrl byte
@@ -374,7 +440,7 @@ def _Set_I2C_Format( self, cmd ):
         self.cSet_I2C_Ctrl_Byte( ctrl, "w" )
         #--Write Reg Addr---------
         self.cSet_I2C_Reg_Addr( cmd )
-        if cmd.Command == "read":
+        if "R" in cmd.COMMAND:
             #--Set Start--------------
             self.cSet_I2C_SCL_SDA( 0, 1 )
             self.cSet_I2C_SCL_SDA( 1, 0 )
@@ -400,7 +466,7 @@ def _Set_SMI_MDC_MDIO( self, a, b ):
     self.cGenATPbyValue()
 #----------------------------------------------------------------------------
 def _Set_SMI_Format( self, cmd ):
-    if (cmd.Protocol != "SMI") or (cmd.Command != "read" and cmd.Command != "write") or (not self.args.ifsmi):
+    if ( cmd.COMMAND not in self.cmd_list ) or ( not self.args.ifsmi ):
         return
     else:   
         #--Preamble------------------
@@ -414,7 +480,7 @@ def _Set_SMI_Format( self, cmd ):
         self.cSet_SMI_MDC_MDIO( 0, 1 )
         #--OP-----------------
         self.f.write("//(SMI) Begin writing OP\n")
-        if cmd.Command == "read":
+        if "R" in cmd.COMMAND:
             self.cSet_SMI_MDC_MDIO( 0, 1 )
             self.cSet_SMI_MDC_MDIO( 0, 0 )
         else:
@@ -427,7 +493,7 @@ def _Set_SMI_Format( self, cmd ):
         self.cSet_SMI_Reg_Addr( cmd )
         #--Turn Around------------
         self.f.write("//(SMI) Begin writing TA\n")
-        if cmd.Command == "read":
+        if "R" in cmd.COMMAND:
             self.cSet_SMI_MDC_MDIO( 0, 0 )#High-Z
             self.cSet_SMI_MDC_MDIO( 0, 0 )
         else:
@@ -441,9 +507,9 @@ def _Set_SMI_Format( self, cmd ):
 #----------------------------------------------------------------------------
 def _Set_SMI_Reg_Addr( self, cmd ):
     self.f.write("//(SMI) Begin writing Reg Address\n")
-    self.f.write("//(SMI) Reg Address = %s \n" % cmd.Address )
+    self.f.write("//(SMI) Reg Address = %s \n" % cmd.REGISTER )
 
-    addr = bin(int(cmd.Address,16))[2:].zfill(5)
+    addr = bin( int(cmd.REGISTER,16) )[2:].zfill(5)
 
     for b in addr:
         self.cSet_SMI_MDC_MDIO( 0, b )
@@ -451,27 +517,42 @@ def _Set_SMI_Reg_Addr( self, cmd ):
 #----------------------------------------------------------------------------
 def _Set_SMI_Phy_Addr( self, cmd ):
     self.f.write("//(SMI) Begin writing PHY Address\n")
-    self.f.write("//(SMI) PHY Address = %s \n" % cmd.Other ) 
+    self.f.write("//(SMI) PHY Address = %s \n" % self.args.phy_adr ) 
 
-    addr = bin(int(cmd.Other,16))[2:].zfill(5)
+    addr = bin(int(self.args.phy_adr,16))[2:].zfill(5)
     if( len(addr) > 5 ):
-        print( "[Error] The PHY Address Length for SMI is larger than 5" )
+        print( "[Error] The PHY Address Length for SMI is larger than 5 bits" )
     for b in addr:
         self.cSet_SMI_MDC_MDIO( 0, b )
     self.f.write("//(SMI) Finish writing PHY Reg Address\n")
 #----------------------------------------------------------------------------
 def _Set_SMI_RW_Data( self, cmd ):
-    rw = cmd.Command
-    ack= 0 if cmd.Command == "read" else "L"
+    rw = cmd.COMMAND
+    ack= 0 if ( "R" in cmd.COMMAND ) else "L"
     self.f.write("//(SMI) Begin %s data\n" % rw)
-    self.f.write("//(SMI) Data = %s \n" % cmd.Value )
-    value =  cmd.Value.replace("_","").zfill(16)
+    self.f.write("//(SMI) Data = %s \n" % cmd.DATA )
+
+    value = 0
+    #Hex format (Must be 32 bit)
+    
+    if not isDataBinary( cmd.DATA ):
+        if( "W" in cmd.COMMAND ):
+            value =  bin(int(cmd.DATA,16))[2:].zfill(16)
+        else:
+            value =  bin(int(cmd.DATA,16))[2:].rjust(16,"x")
+    #Binary format
+    else:
+        if( "W" in cmd.COMMAND ):
+            value = cmd.DATA.replace( "_", "" ).zfill(16)
+        else:#R, RL, RH
+            value = cmd.DATA.replace( "_", "" ).rjust(16,"x")
+
     if( len(value) > 16 ):
-        print( "[Error] The PHY Address Length for SMI is larger than 5" )
-        print(value)
+        print( "[Warning] The SMI DATA Length for SMI is larger than 16 (It should be 16 bits, based on SPEC)" )
+        print( "Your DATA is ", value )
 
     for v in value:
-        if rw == "read":
+        if "R" in rw:
             if v == "1":
                 v = "H"
             elif v == "0":
